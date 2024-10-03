@@ -2,6 +2,7 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.layout import Layout
 from rich.text import Text
+from rich.live import Live
 
 # 创建日志面板
 def create_log_panel(panel_handler):
@@ -119,3 +120,12 @@ def create_layout():
     )
     
     return layout
+
+# 添加新的函数来创建Live对象
+def create_live_display(layout):
+    return Live(
+        layout,
+        refresh_per_second=4,  # 每秒刷新4次
+        screen=True,  # 使用备用屏幕缓冲区
+        auto_refresh=False  # 禁用自动刷新，我们将手动控制刷新
+    )

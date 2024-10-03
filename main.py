@@ -12,6 +12,7 @@ from cryptogrid.ui_components import (
     create_market_depth_panel, create_grid_status_panel,
     create_order_status_panel, create_layout, create_log_panel
 )
+import threading
 
 # 策略参数
 def init_strategy_params():
@@ -37,49 +38,60 @@ def init_strategy_params():
         "symbol": SYMBOL
     }
 
+def update_strategy_state_thread(strategy, stop_event):
+    while not stop_event.is_set():
+        strategy.handle_price_change()
+        time.sleep(1)  # 每秒更新一次策略状态
+    strategy.save_strategy_state()
+
+
 def main():
-    strategy_params = init_strategy_params()
-    # exchange = getattr(ccxt, strategy_params["exchange"])()
-    exchange = MockExchange(initial_price=10000, volatility=0.005)
-    current_price = exchange.fetch_ticker(strategy_params["symbol"])["last"]
-    
     # 设置日志
     panel_handler = setup_logger()
     
-    strategy = GridTradingStrategy(
-        exchange=exchange,
-        symbol=strategy_params["symbol"],
-        initial_price=current_price,
-        grid_size=strategy_params["grid_size"],
-        grid_levels=strategy_params["grid_count"],
-        initial_capital=strategy_params["initial_capital"],
-        position_amount=strategy_params["position_amount"],
-        max_loss=strategy_params["max_loss"]
-    )
-    
+    # 初始化策略
+    strategy_params = init_strategy_params()
+    exchange = MockExchange(initial_price=10000, volatility=0.005)
+    strategy = GridTradingStrategy(exchange, strategy_params["symbol"])
+    strategy_state_file = f"{strategy_params['exchange']}_{strategy_params['symbol']}_strategy_state.json"
+    if os.path.exists(strategy_state_file):
+        strategy.load_strategy_state(strategy_state_file)
+    else:
+        current_price = exchange.fetch_ticker(strategy_params["symbol"])["last"]
+        strategy.set_strategy_params(
+            initial_price=current_price,
+            grid_size=strategy_params["grid_size"],
+            grid_levels=strategy_params["grid_count"],
+            position_amount=strategy_params["position_amount"],
+            initial_capital=strategy_params["initial_capital"],
+            max_loss=strategy_params["max_loss"]
+        )
+
+    # 创建停止事件和线程
+    stop_event = threading.Event()
+    update_thread = threading.Thread(target=update_strategy_state_thread, args=(strategy, stop_event))
+    update_thread.start()
+
     layout = create_layout()
+    try:
+        with Live(layout, refresh_per_second=1, screen=True):
+            while True:
+                # 更新界面
+                layout["params"].update(create_strategy_params_panel(strategy_params))
+                layout["capital_status"].update(create_capital_status_panel(strategy))
+                layout["market_depth"].update(create_market_depth_panel(strategy.exchange.fetch_order_book(strategy_params["symbol"], limit=5)))
+                layout["grid_status"].update(create_grid_status_panel(strategy))
+                layout["order_status"].update(create_order_status_panel(strategy))
+                layout["log"].update(create_log_panel(panel_handler))
+                
+                time.sleep(0.1)  # 稍微降低主线程的刷新频率，减少CPU使用
+    except KeyboardInterrupt:
+        print("正在停止程序...")
+    finally:
+        # 停止更新线程
+        stop_event.set()
+        update_thread.join()
     
-    with Live(layout, refresh_per_second=1, screen=True):
-        while True:
-            # 更新市场深度数据
-            market_depth = exchange.fetch_order_book(strategy_params["symbol"], limit=5)
-            current_price = market_depth["bids"][0][0]
-            
-            # 更新策略状态
-            strategy.handle_price_change(current_price)
-            
-            # 使用logger记录日志
-            logger.info(f"当前价格: {current_price:.2f}, 总资产: {strategy.total_assets:.2f}")
-            
-            # 更新界面
-            layout["params"].update(create_strategy_params_panel(strategy_params))
-            layout["capital_status"].update(create_capital_status_panel(strategy))
-            layout["market_depth"].update(create_market_depth_panel(market_depth))
-            layout["grid_status"].update(create_grid_status_panel(strategy))
-            layout["order_status"].update(create_order_status_panel(strategy))
-            layout["log"].update(create_log_panel(panel_handler))
-            
-            time.sleep(1)
 
 if __name__ == "__main__":
     main()
