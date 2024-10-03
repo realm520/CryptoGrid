@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "cryptogrid"
+version = "0.1.0"
+description = ""
+authors = ["realm520 <realm520@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+python-dotenv = "^1.0.1"
+rich = "^13.9.1"
+pytest = "^8.3.3"
+ccxt = "^4.4.12"
+loguru = "^0.7.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
